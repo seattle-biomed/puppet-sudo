@@ -27,6 +27,7 @@
 #
 # Actions:
 #   Installs sudo configuration snippets
+#   Checks configuration snippets for syntax errors and removes failures
 #
 # Requires:
 #   Class sudo
@@ -53,13 +54,24 @@ define sudo::conf(
     $content_real = undef
   }
 
+  $path = "${sudo_config_dir}${priority}_${name}"
+  
   file { "${priority}_${name}":
     ensure  => $ensure,
-    path    => "${sudo_config_dir}${priority}_${name}",
+    path    => $path,
     owner   => 'root',
     group   => $sudo::params::config_file_group,
     mode    => '0440',
     source  => $source,
     content => $content_real,
+    notify  => Exec["check ${priority}_${name} sudo syntax"],
   }
+
+  # Don't deploy a broken config file!
+  exec { "check ${priority}_${name} sudo syntax":
+    command     => "/bin/rm $path",
+    unless      => "/usr/sbin/visudo -c -f $path",
+    refreshonly => true,
+  }
+    
 }
