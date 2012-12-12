@@ -1,4 +1,4 @@
-# = Class: sudo::hiera
+# = Class: sudo::resources
 #
 # Configure sudo using information from hiera to populate parameters.
 #
@@ -17,9 +17,9 @@
 #
 # == Sample Usage:
 #
-# include sudo::hiera
+# include sudo::resources
 #
-class sudo::hiera($sudoers) {
+class sudo::resources($sudoers) {
 
   include sudo
 
