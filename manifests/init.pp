@@ -7,15 +7,34 @@
 #     Ensure if present or absent.
 #     Default: present
 #
-#   [*autoupgrade*]
-#     Upgrade package automatically, if there is a newer version.
-#     Default: false
-#
 #   [*package*]
 #     Name of the package.
 #     Only set this, if your platform is not supported or you know,
 #     what you're doing.
 #     Default: auto-set, platform specific
+#
+#   [*package_ensure*]
+#     Allows you to ensure a particular version of a package
+#     Default: present
+#
+#   [*package_source*]
+#     Where to find the package.  Only set this on AIX (required) and
+#     Solaris (required) or if your platform is not supported or you
+#     know, what you're doing.
+#
+#     The default for aix is the perzl sudo package. For solaris 10 we
+#     use the official www.sudo.ws binary package.
+#
+#     Default: AIX: perzl.org
+#              Solaris: www.sudo.ws
+#
+#   [*package_admin_file*]
+#     Where to find a Solaris 10 package admin file for
+#     an unattended installation. We do not supply a default file, so
+#     this has to be staged separately
+#
+#     Only set this on Solaris 10 (required)
+#     Default: /var/sadm/install/admin/puppet
 #
 #   [*purge*]
 #     Whether or not to purge sudoers.d directory
@@ -29,7 +48,7 @@
 #
 #   [*config_file_replace*]
 #     Replace configuration file with that one delivered with this module
-#     Default: true
+#     Default: false
 #
 #   [*config_dir*]
 #     Main configuration directory
@@ -44,56 +63,50 @@
 #     Default: auto-set, platform specific
 #
 # Actions:
-#   Installs locales package and generates specified locales
+#   Installs sudo package and checks the state of sudoers file and sudoers.d directory.
 #
 # Requires:
 #   Nothing
 #
 # Sample Usage:
-#   class { 'locales':
-#     locales => [
-#       'en_US.UTF-8 UTF-8',
-#       'de_DE.UTF-8 UTF-8',
-#       'en_GB.UTF-8 UTF-8',
-#     ],
-#   }
+#   class { 'sudo': }
 #
 # [Remember: No empty lines between comments and class definition]
 class sudo(
-  $ensure = 'present',
-  $autoupgrade = false,
-  $package = $sudo::params::package,
-  $purge = true,
-  $config_file = $sudo::params::config_file,
+  $enable              = true,
+  $package             = $sudo::params::package,
+  $package_ensure      = present,
+  $package_source      = $sudo::params::package_source,
+  $package_admin_file  = $sudo::params::package_admin_file,
+  $purge               = true,
+  $config_file         = $sudo::params::config_file,
   $config_file_replace = true,
-  $config_dir = $sudo::params::config_dir,
-  $source = $sudo::params::source
+  $config_dir          = $sudo::params::config_dir,
+  $source              = $sudo::params::source
 ) inherits sudo::params {
 
-  case $ensure {
-    /(present)/: {
-      $dir_ensure = 'directory'
-      if $autoupgrade == true {
-        $package_ensure = 'latest'
-      } else {
-        $package_ensure = 'present'
-      }
+
+  validate_bool($enable)
+  case $enable {
+    true: {
+      $dir_ensure  = 'directory'
+      $file_ensure = 'present'
     }
-    /(absent)/: {
-      $package_ensure = 'absent'
-      $dir_ensure = 'absent'
-    }
-    default: {
-      fail('ensure parameter must be present or absent')
+    false: {
+      $dir_ensure  = 'absent'
+      $file_ensure = 'absent'
     }
   }
 
-  package { $package:
-    ensure => $package_ensure,
+  class { 'sudo::package':
+    package            => $package,
+    package_ensure     => $package_ensure,
+    package_source     => $package_source,
+    package_admin_file => $package_admin_file,
   }
 
   file { $config_file:
-    ensure  => $ensure,
+    ensure  => $file_ensure,
     owner   => 'root',
     group   => $sudo::params::config_file_group,
     mode    => '0440',
@@ -110,5 +123,13 @@ class sudo(
     recurse => $purge,
     purge   => $purge,
     require => Package[$package],
+  }
+
+  if $config_file_replace == false and $::osfamily == 'RedHat' and $::operatingsystemmajrelease == '5' {
+    augeas { 'includedirsudoers':
+      changes => ['set /files/etc/sudoers/#includedir /etc/sudoers.d'],
+      incl => "$config_file",
+      lens => 'FixedSudoers.lns',
+    }
   }
 }
